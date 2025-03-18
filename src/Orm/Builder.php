@@ -2,6 +2,7 @@
 namespace Dbout\WpOrm\Orm;
 
 use Illuminate\Database\Query\Builder as EloquentBuilder;
+use Illuminate\Database\Eloquent\Builder as EloquentQueryBuilder;
 
 /**
  * Class Builder
@@ -31,18 +32,23 @@ class Builder extends EloquentBuilder {
     /**
      * Makes "from" fetch from a subquery.
      *
-     * @param  \Illuminate\Database\Query\Builder|string $query
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder|string $query
      * @param  string  $as
      * @return $this
      */
     public function fromSub($query, $as)
     {
-        if ($query instanceof EloquentBuilder) {
+        $bindings = [];
+        
+        if ($query instanceof EloquentQueryBuilder) {
+            $bindings = $query->getQuery()->getBindings();
+            $query = $query->getQuery()->toSql();
+        } elseif ($query instanceof EloquentBuilder) {
             $bindings = $query->getBindings();
             $query = $query->toSql();
         }
 
-        return $this->fromRaw('(' . $query . ') as ' . $this->grammar->wrap($as), $bindings ?? []);
+        return $this->fromRaw('(' . $query . ') as ' . $this->grammar->wrap($as), $bindings);
     }
 
     /**
