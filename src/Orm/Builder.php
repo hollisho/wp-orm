@@ -29,6 +29,39 @@ class Builder extends EloquentBuilder {
     }
 
     /**
+     * Makes "from" fetch from a subquery.
+     *
+     * @param  \Illuminate\Database\Query\Builder|string $query
+     * @param  string  $as
+     * @return $this
+     */
+    public function fromSub($query, $as)
+    {
+        if ($query instanceof EloquentBuilder) {
+            $bindings = $query->getBindings();
+            $query = $query->toSql();
+        }
+
+        return $this->fromRaw('(' . $query . ') as ' . $this->grammar->wrap($as), $bindings ?? []);
+    }
+
+    /**
+     * Add a raw from clause to the query.
+     *
+     * @param  string  $expression
+     * @param  array   $bindings
+     * @return $this
+     */
+    public function fromRaw($expression, array $bindings = [])
+    {
+        $this->from = new \Illuminate\Database\Query\Expression($expression);
+
+        $this->addBinding($bindings, 'from');
+
+        return $this;
+    }
+
+    /**
      * @return Database|\Illuminate\Database\ConnectionInterface
      */
     public function getConnection()
