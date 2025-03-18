@@ -1,0 +1,24 @@
+{
+  "name": "hollisho/wp-orm",
+  "description": "Wordpress ORM with Eloquent and Phinx",
+  "type": "package",
+  "keywords": ["wordpress", "wp", "orm", "database", "eloquent", "db", "sql", "migration", "phinx"],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "require": {
+    "php": ">=7.0",
+    "illuminate/database": "^5.5",
+    "robmorgan/phinx": "^0.11.7"
+  },
+  "suggest": {
+    "illuminate/events": "Add events to your models"
+  },
+  "autoload": {
+    "files": [
+      "src/includes/migrations.php"
+    ],
+    "psr-4": {
+      "Dbout\\WpOrm\\": "src/"
+    }
+  }
+}

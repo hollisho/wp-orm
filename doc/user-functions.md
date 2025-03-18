@@ -1,0 +1,14 @@
+```php
+$user->getId();
+$user->getLogin();
+$user->getPassword();
+$user->getNiceName();
+$user->getEmail();
+$user->getUrl();
+$user->getRegistered();
+$user->getActivationKey();
+$user->getDisplayName();
+$user->comments;
+$user->metas;
+$user->posts;
+```
