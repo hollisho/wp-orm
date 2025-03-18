@@ -47,7 +47,7 @@ abstract class AbstractModel extends Model
      *
      * @return string
      */
-    public function getTable(): string
+    public function getTable()
     {
         $prefix = $this->getConnection()->getTablePrefix();
         
@@ -67,7 +67,7 @@ abstract class AbstractModel extends Model
     /**
      * @return int|null
      */
-    public function getId(): ?int
+    public function getId()
     {
         return $this->{$this->primaryKey};
     }
@@ -77,7 +77,7 @@ abstract class AbstractModel extends Model
      *
      * @return string
      */
-    public static function table(): string
+    public static function table()
     {
         return (new static())->getTable();
     }

@@ -30,7 +30,7 @@ abstract class AbstractMeta extends AbstractModel implements MetaInterface
     /**
      * @return string
      */
-    public function getKey(): string
+    public function getKey()
     {
         return $this->getAttribute(self::META_KEY);
     }
@@ -39,7 +39,7 @@ abstract class AbstractMeta extends AbstractModel implements MetaInterface
      * @param string $key
      * @return $this
      */
-    public function setKey(string $key): self
+    public function setKey($key)
     {
         $this->setAttribute(self::META_KEY, $key);
         return $this;
@@ -57,7 +57,7 @@ abstract class AbstractMeta extends AbstractModel implements MetaInterface
      * @param string $value
      * @return $this
      */
-    public function setValue(string $value): self
+    public function setValue($value)
     {
         $this->setAttribute(self::META_VALUE, $value);
         return $this;
@@ -66,7 +66,7 @@ abstract class AbstractMeta extends AbstractModel implements MetaInterface
     /**
      * @return string
      */
-    public function getKeyColumn(): string
+    public function getKeyColumn()
     {
         return self::META_KEY;
     }
@@ -74,7 +74,7 @@ abstract class AbstractMeta extends AbstractModel implements MetaInterface
     /**
      * @return string
      */
-    public function getValueColumn(): string
+    public function getValueColumn()
     {
         return self::META_VALUE;
     }

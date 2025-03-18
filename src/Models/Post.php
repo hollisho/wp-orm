@@ -128,7 +128,7 @@ class Post extends AbstractModel
     /**
      * @return HasOne
      */
-    public function author(): HasOne
+    public function author()
     {
         return $this->hasOne(User::class, User::USER_ID, self::AUTHOR);
     }
@@ -136,7 +136,7 @@ class Post extends AbstractModel
     /**
      * @return HasMany
      */
-    public function comments(): HasMany
+    public function comments()
     {
         return $this->hasMany(Comment::class, Comment::POST_ID);
     }
@@ -144,7 +144,7 @@ class Post extends AbstractModel
     /**
      * @return HasOne
      */
-    public function parent(): HasOne
+    public function parent()
     {
         return $this->hasOne(Post::class, Post::POST_ID, self::PARENT);
     }
@@ -152,7 +152,7 @@ class Post extends AbstractModel
     /**
      * @inheritDoc
      */
-    public function newEloquentBuilder($query): PostBuilder
+    public function newEloquentBuilder($query)
     {
         return new PostBuilder($query);
     }
@@ -160,7 +160,7 @@ class Post extends AbstractModel
     /**
      * @inerhitDoc
      */
-    public function getMetaClass(): string
+    public function getMetaClass()
     {
         return \Dbout\WpOrm\Models\Meta\PostMeta::class;
     }

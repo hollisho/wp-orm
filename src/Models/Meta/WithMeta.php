@@ -15,12 +15,12 @@ trait WithMeta
     /**
      * @var AbstractMeta|null
      */
-    protected ?AbstractMeta $metaModel = null;
+    protected $metaModel = null;
 
     /**
      * @var array
      */
-    protected array $_tmpMetas = [];
+    protected $_tmpMetas = [];
 
     /**
      * @return void
@@ -36,7 +36,7 @@ trait WithMeta
      * @throws MetaNotSupportedException
      * @throws \ReflectionException
      */
-    public function initializeWithMeta(): void
+    public function initializeWithMeta()
     {
         $metaClass = $this->getMetaClass();
         $object = (new \ReflectionClass($metaClass));
@@ -54,7 +54,7 @@ trait WithMeta
     /**
      * @return HasMany
      */
-    public function metas(): HasMany
+    public function metas()
     {
         return $this->hasMany(get_class($this->metaModel), $this->metaModel->getFkColumn());
     }
@@ -63,7 +63,7 @@ trait WithMeta
      * @param string $metaKey
      * @return AbstractMeta|null
      */
-    public function getMeta(string $metaKey): ?AbstractMeta
+    public function getMeta($metaKey)
     {
         return $this->metas()
             ->firstWhere($this->metaModel->getKeyColumn(), $metaKey);
@@ -73,7 +73,7 @@ trait WithMeta
      * @param string $metaKey
      * @return mixed|null
      */
-    public function getMetaValue(string $metaKey)
+    public function getMetaValue($metaKey)
     {
         if (!$this->exists) {
             return $this->_tmpMetas[$metaKey] ?? null;
@@ -91,7 +91,7 @@ trait WithMeta
      * @param string $metaKey
      * @return bool
      */
-    public function hasMeta(string $metaKey): bool
+    public function hasMeta($metaKey)
     {
         return $this->metas()
             ->where($this->metaModel->getKeyColumn(), $metaKey)
@@ -103,7 +103,7 @@ trait WithMeta
      * @param $value
      * @return AbstractMeta|null
      */
-    public function setMeta(string $metaKey, $value): ?AbstractMeta
+    public function setMeta($metaKey, $value)
     {
         if (!$this->exists) {
             $this->_tmpMetas[$metaKey] = $value;
@@ -126,7 +126,7 @@ trait WithMeta
      * @param string $metaKey
      * @return bool
      */
-    public function deleteMeta(string $metaKey): bool
+    public function deleteMeta($metaKey)
     {
         if (!$this->exists) {
             unset($this->_tmpMetas[$metaKey]);
@@ -141,12 +141,12 @@ trait WithMeta
     /**
      * @return string
      */
-    abstract public function getMetaClass(): string;
+    abstract public function getMetaClass();
 
     /**
      * @return void
      */
-    protected function saveTmpMetas(): void
+    protected function saveTmpMetas()
     {
         foreach ($this->_tmpMetas as $metaKey => $value) {
             $this->setMeta($metaKey, $value);

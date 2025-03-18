@@ -12,16 +12,16 @@ interface MetaInterface
     /**
      * @return string
      */
-    public function getFkColumn(): string;
+    public function getFkColumn();
 
 
     /**
      * @return string
      */
-    public function getKeyColumn(): string;
+    public function getKeyColumn();
 
     /**
      * @return string
      */
-    public function getValueColumn(): string;
+    public function getValueColumn();
 }
