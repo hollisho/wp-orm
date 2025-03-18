@@ -62,7 +62,9 @@ class Builder extends EloquentBuilder {
     {
         $this->from = new \Illuminate\Database\Query\Expression($expression);
 
-        $this->addBinding($bindings, 'from');
+        if (!empty($bindings)) {
+            $this->addBinding($bindings, 'where');
+        }
 
         return $this;
     }
