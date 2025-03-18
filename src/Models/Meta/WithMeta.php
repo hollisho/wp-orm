@@ -66,7 +66,8 @@ trait WithMeta
     public function getMeta($metaKey)
     {
         return $this->metas()
-            ->firstWhere($this->metaModel->getKeyColumn(), $metaKey);
+            ->where($this->metaModel->getKeyColumn(), $metaKey)
+            ->first();
     }
 
     /**

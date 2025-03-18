@@ -15,9 +15,9 @@ class OptionBuilder extends AbstractBuilder
      * @param string $optionName
      * @return Option|null
      */
-    public function findOneByName(string $optionName): ?Option
+    public function findOption(string $optionName)
     {
-        return $this->firstWhere(Option::NAME, $optionName);
+        return $this->where(Option::NAME, $optionName)->first();
     }
 
     /**
