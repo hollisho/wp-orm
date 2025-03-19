@@ -24,23 +24,23 @@ class Database implements ConnectionInterface
      * Count of active transactions
      * @var int
      */
-    public int $transactionCount = 0;
+    public $transactionCount = 0;
 
     /**
      * The database connection configuration options.
      * @var array
      */
-    protected array $config = [];
+    protected $config = [];
 
     /**
      * @var string|null
      */
-    protected ?string $tablePrefix = '';
+    protected $tablePrefix = '';
 
     /**
      * @var null|Database
      */
-    protected static ?self $instance = null;
+    protected static $instance = null;
 
     /**
      * @return Database
@@ -94,7 +94,7 @@ class Database implements ConnectionInterface
     /**
      * @return string|null
      */
-    public function getTablePrefix(): ?string
+    public function getTablePrefix()
     {
         return $this->tablePrefix;
     }
