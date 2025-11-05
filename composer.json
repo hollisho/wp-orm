@@ -1,0 +1,27 @@
+{
+    "name": "hollisho/wp-orm",
+    "description": "Eloquent-like ORM for WordPress with read-write splitting and multisite support",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Hollis Ho",
+            "email": "hollis@example.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "WPOrm\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "WPOrm\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
