@@ -55,8 +55,11 @@ class Collection implements ArrayAccess, Countable, IteratorAggregate
     /**
      * 过滤
      */
-    public function filter(callable $callback): self
+    public function filter(?callable $callback = null): self
     {
+        if ($callback === null) {
+            return new static(array_filter($this->items));
+        }
         return new static(array_filter($this->items, $callback));
     }
 
@@ -77,11 +80,49 @@ class Collection implements ArrayAccess, Countable, IteratorAggregate
     /**
      * 提取列
      */
-    public function pluck(string $key): array
+    public function pluck(string $key): self
     {
-        return array_map(function ($item) use ($key) {
-            return is_object($item) ? $item->$key : $item[$key];
+        $values = array_map(function ($item) use ($key) {
+            if (is_object($item)) {
+                return $item->$key ?? null;
+            }
+            return $item[$key] ?? null;
         }, $this->items);
+
+        return new static($values);
+    }
+
+    /**
+     * 去重
+     */
+    public function unique(): self
+    {
+        return new static(array_values(array_unique($this->items, SORT_REGULAR)));
+    }
+
+    /**
+     * 按键索引
+     */
+    public function keyBy(string $key): self
+    {
+        $keyed = [];
+
+        foreach ($this->items as $item) {
+            $keyValue = is_object($item) ? ($item->$key ?? null) : ($item[$key] ?? null);
+            if ($keyValue !== null) {
+                $keyed[$keyValue] = $item;
+            }
+        }
+
+        return new static($keyed);
+    }
+
+    /**
+     * 获取指定键的值
+     */
+    public function get($key, $default = null)
+    {
+        return $this->items[$key] ?? $default;
     }
 
     /**
@@ -110,16 +151,26 @@ class Collection implements ArrayAccess, Countable, IteratorAggregate
     /**
      * 分组
      */
-    public function groupBy(string $key): array
+    public function groupBy(string $key): self
     {
         $groups = [];
 
         foreach ($this->items as $item) {
-            $groupKey = is_object($item) ? $item->$key : $item[$key];
-            $groups[$groupKey][] = $item;
+            $groupKey = is_object($item) ? ($item->$key ?? null) : ($item[$key] ?? null);
+            if ($groupKey !== null) {
+                if (!isset($groups[$groupKey])) {
+                    $groups[$groupKey] = [];
+                }
+                $groups[$groupKey][] = $item;
+            }
         }
 
-        return $groups;
+        // 将每个分组转换为 Collection
+        foreach ($groups as $key => $items) {
+            $groups[$key] = new static($items);
+        }
+
+        return new static($groups);
     }
 
     /**

@@ -3,7 +3,13 @@
 namespace WPOrm\Model;
 
 use WPOrm\Builder\QueryBuilder;
+use WPOrm\Collection\Collection;
 use WPOrm\Database\ConnectionManager;
+use WPOrm\Relations\BelongsTo;
+use WPOrm\Relations\BelongsToMany;
+use WPOrm\Relations\HasMany;
+use WPOrm\Relations\HasOne;
+use WPOrm\Relations\Relation;
 
 /**
  * 模型基类
@@ -28,7 +34,7 @@ abstract class Model
     /**
      * 创建新实例
      */
-    public static function newInstance(array $attributes = []): static
+    public static function newInstance(array $attributes = [])
     {
         $model = new static($attributes);
         $model->exists = true;
@@ -86,7 +92,7 @@ abstract class Model
     {
         $relation = $this->$key();
 
-        if ($relation instanceof \WPOrm\Relations\Relation) {
+        if ($relation instanceof Relation) {
             $this->relations[$key] = $relation->getResults();
             return $this->relations[$key];
         }
@@ -129,7 +135,7 @@ abstract class Model
         foreach ($this->relations as $key => $value) {
             if (is_object($value) && method_exists($value, 'toArray')) {
                 $attributes[$key] = $value->toArray();
-            } elseif ($value instanceof \WPOrm\Collection\Collection) {
+            } elseif ($value instanceof Collection) {
                 $attributes[$key] = $value->toArray();
             } else {
                 $attributes[$key] = $value;
@@ -305,7 +311,7 @@ abstract class Model
     /**
      * 获取所有记录
      */
-    public static function all(): \WPOrm\Collection\Collection
+    public static function all(): Collection
     {
         return static::query()->get();
     }
@@ -329,7 +335,7 @@ abstract class Model
     /**
      * 创建新记录
      */
-    public static function create(array $attributes): static
+    public static function create(array $attributes)
     {
         $model = new static($attributes);
         $model->save();
@@ -371,28 +377,28 @@ abstract class Model
     /**
      * 定义一对一关联
      */
-    protected function hasOne(string $related, string $foreignKey, ?string $localKey = null)
+    protected function hasOne(string $related, string $foreignKey, ?string $localKey = null): HasOne
     {
         $localKey = $localKey ?? static::$primaryKey;
-        return new \WPOrm\Relations\HasOne($this, $related, $foreignKey, $localKey);
+        return new HasOne($this, $related, $foreignKey, $localKey);
     }
 
     /**
      * 定义一对多关联
      */
-    protected function hasMany(string $related, string $foreignKey, ?string $localKey = null)
+    protected function hasMany(string $related, string $foreignKey, ?string $localKey = null): HasMany
     {
         $localKey = $localKey ?? static::$primaryKey;
-        return new \WPOrm\Relations\HasMany($this, $related, $foreignKey, $localKey);
+        return new HasMany($this, $related, $foreignKey, $localKey);
     }
 
     /**
      * 定义反向一对多关联
      */
-    protected function belongsTo(string $related, string $foreignKey, ?string $ownerKey = null)
+    protected function belongsTo(string $related, string $foreignKey, ?string $ownerKey = null): BelongsTo
     {
         $ownerKey = $ownerKey ?? $related::getPrimaryKey();
-        return new \WPOrm\Relations\BelongsTo($this, $related, $foreignKey, $ownerKey);
+        return new BelongsTo($this, $related, $foreignKey, $ownerKey);
     }
 
     /**
@@ -403,8 +409,9 @@ abstract class Model
         string $pivotTable,
         string $foreignPivotKey,
         string $relatedPivotKey
-    ) {
-        return new \WPOrm\Relations\BelongsToMany(
+    ): BelongsToMany
+    {
+        return new BelongsToMany(
             $this,
             $related,
             $pivotTable,

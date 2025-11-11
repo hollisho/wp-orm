@@ -24,6 +24,6 @@ class BelongsTo extends Relation
     public function getResults()
     {
         $foreignValue = $this->parent->getAttribute($this->foreignKey);
-        return $this->related::where($this->localKey, $foreignValue)->first();
+        return $this->related::query()->where($this->localKey, $foreignValue)->first();
     }
 }

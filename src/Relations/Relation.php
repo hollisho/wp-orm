@@ -37,4 +37,36 @@ abstract class Relation
      * 添加约束
      */
     abstract public function addConstraints(): void;
+
+    /**
+     * 获取父模型
+     */
+    public function getParent(): Model
+    {
+        return $this->parent;
+    }
+
+    /**
+     * 获取关联模型类名
+     */
+    public function getRelated(): string
+    {
+        return $this->related;
+    }
+
+    /**
+     * 获取外键
+     */
+    public function getForeignKey(): string
+    {
+        return $this->foreignKey;
+    }
+
+    /**
+     * 获取本地键
+     */
+    public function getLocalKey(): string
+    {
+        return $this->localKey;
+    }
 }

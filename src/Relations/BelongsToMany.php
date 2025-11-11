@@ -44,4 +44,28 @@ class BelongsToMany extends Relation
         // 简化实现，实际需要通过中间表查询
         return $this->related::query()->get();
     }
+
+    /**
+     * 获取中间表名
+     */
+    public function getPivotTable(): string
+    {
+        return $this->pivotTable;
+    }
+
+    /**
+     * 获取外键（中间表中的父模型外键）
+     */
+    public function getForeignPivotKey(): string
+    {
+        return $this->foreignPivotKey;
+    }
+
+    /**
+     * 获取关联键（中间表中的关联模型外键）
+     */
+    public function getRelatedPivotKey(): string
+    {
+        return $this->relatedPivotKey;
+    }
 }
