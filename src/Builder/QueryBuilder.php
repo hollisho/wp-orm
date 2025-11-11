@@ -18,6 +18,7 @@ class QueryBuilder
     protected array $wheres = [];
     protected array $bindings = [];
     protected array $orders = [];
+    protected array $groups = [];
     protected ?int $limitValue = null;
     protected ?int $offsetValue = null;
     protected array $columns = ['*'];
@@ -177,6 +178,16 @@ class QueryBuilder
             'direction' => strtolower($direction) === 'desc' ? 'DESC' : 'ASC'
         ];
 
+        return $this;
+    }
+
+    /**
+     * Group By
+     */
+    public function groupBy(...$columns): self
+    {
+        $columns = is_array($columns[0]) ? $columns[0] : $columns;
+        $this->groups = array_merge($this->groups, $columns);
         return $this;
     }
 
@@ -370,6 +381,11 @@ class QueryBuilder
         // Where
         if (!empty($this->wheres)) {
             $sql .= ' WHERE ' . $this->compileWheres();
+        }
+
+        // Group By
+        if (!empty($this->groups)) {
+            $sql .= ' GROUP BY ' . implode(', ', $this->groups);
         }
 
         // Order By
