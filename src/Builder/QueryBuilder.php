@@ -394,6 +394,18 @@ class QueryBuilder
     }
 
     /**
+     * 转换为 SQL，并绑定参数
+     * @return string
+     */
+    public function toRawSql(): string
+    {
+        $sql = $this->toSql();
+        $bindings = $this->getBindings();
+
+        return sprintf($sql, ...$bindings);
+    }
+
+    /**
      * 编译 Where 子句
      */
     protected function compileWheres(): string
