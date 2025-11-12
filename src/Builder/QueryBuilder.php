@@ -378,7 +378,7 @@ class QueryBuilder
         $items = $this->limit($perPage)->offset($offset)->get();
 
         return [
-            'items' => $items,
+            'items' => $items->toArray(),
             'total' => $total,
             'per_page' => $perPage,
             'current_page' => $page,
