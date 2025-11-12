@@ -343,6 +343,33 @@ abstract class Model
     }
 
     /**
+     * 更新模型属性
+     */
+    public function update(array $attributes): bool
+    {
+        $this->fill($attributes);
+        return $this->save();
+    }
+
+    /**
+     * 批量更新（静态方法）
+     *
+     * @param int|string $id 主键值
+     * @param array $attributes 要更新的属性
+     * @return bool
+     */
+    public static function updateById($id, array $attributes): bool
+    {
+        $model = static::find($id);
+
+        if (!$model) {
+            return false;
+        }
+
+        return $model->update($attributes);
+    }
+
+    /**
      * 获取表名
      */
     public static function getTable(): string
@@ -420,3 +447,4 @@ abstract class Model
         );
     }
 }
+
