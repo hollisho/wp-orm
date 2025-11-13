@@ -319,7 +319,7 @@ abstract class Model
     /**
      * 根据 ID 查找
      */
-    public static function find($id): ?static
+    public static function find($id)
     {
         return static::query()->find($id);
     }
