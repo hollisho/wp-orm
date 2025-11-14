@@ -69,4 +69,12 @@ abstract class Relation
     {
         return $this->localKey;
     }
+
+    /**
+     * 魔术方法：将方法调用转发给 QueryBuilder
+     */
+    public function __call($method, $parameters)
+    {
+        return $this->getQuery()->$method(...$parameters);
+    }
 }
