@@ -31,6 +31,8 @@ class QueryBuilder
     protected array $with = [];
     protected ?int $siteId = null;
     protected bool $useGlobalTable = false;
+    protected $fromSubquery = null;  // FROM 子查询
+    protected ?string $fromSubqueryAlias = null;  // 子查询别名
 
     public function __construct(string $modelClass)
     {
@@ -263,6 +265,140 @@ class QueryBuilder
     }
 
     /**
+     * FROM 子查询
+     *
+     * @param QueryBuilder|string $query 子查询（QueryBuilder 实例或 SQL 字符串）
+     * @param string $alias 子查询别名
+     * @return self
+     */
+    public function fromSub($query, string $alias): self
+    {
+        $this->fromSubquery = $query;
+        $this->fromSubqueryAlias = $alias;
+
+        // 注意：子查询的参数会在 toSql() 中通过 toRawSql() 直接替换
+        // 所以这里不需要合并绑定参数
+
+        return $this;
+    }
+
+    /**
+     * WHERE IN 子查询
+     *
+     * @param string $column 字段名
+     * @param QueryBuilder|string $query 子查询
+     * @return self
+     */
+    public function whereInSub(string $column, $query): self
+    {
+        $column = $this->normalizeColumnName($column);
+
+        if ($query instanceof QueryBuilder) {
+            $sql = $query->toSql();
+            $bindings = $query->getBindings();
+        } else {
+            $sql = $query;
+            $bindings = [];
+        }
+
+        $this->wheres[] = [
+            'type' => 'in_sub',
+            'column' => $column,
+            'query' => $sql,
+            'boolean' => 'and'
+        ];
+
+        $this->bindings = array_merge($this->bindings, $bindings);
+
+        return $this;
+    }
+
+    /**
+     * WHERE NOT IN 子查询
+     *
+     * @param string $column 字段名
+     * @param QueryBuilder|string $query 子查询
+     * @return self
+     */
+    public function whereNotInSub(string $column, $query): self
+    {
+        $column = $this->normalizeColumnName($column);
+
+        if ($query instanceof QueryBuilder) {
+            $sql = $query->toSql();
+            $bindings = $query->getBindings();
+        } else {
+            $sql = $query;
+            $bindings = [];
+        }
+
+        $this->wheres[] = [
+            'type' => 'not_in_sub',
+            'column' => $column,
+            'query' => $sql,
+            'boolean' => 'and'
+        ];
+
+        $this->bindings = array_merge($this->bindings, $bindings);
+
+        return $this;
+    }
+
+    /**
+     * WHERE EXISTS 子查询
+     *
+     * @param QueryBuilder|string $query 子查询
+     * @return self
+     */
+    public function whereExists($query): self
+    {
+        if ($query instanceof QueryBuilder) {
+            $sql = $query->toSql();
+            $bindings = $query->getBindings();
+        } else {
+            $sql = $query;
+            $bindings = [];
+        }
+
+        $this->wheres[] = [
+            'type' => 'exists',
+            'query' => $sql,
+            'boolean' => 'and'
+        ];
+
+        $this->bindings = array_merge($this->bindings, $bindings);
+
+        return $this;
+    }
+
+    /**
+     * WHERE NOT EXISTS 子查询
+     *
+     * @param QueryBuilder|string $query 子查询
+     * @return self
+     */
+    public function whereNotExists($query): self
+    {
+        if ($query instanceof QueryBuilder) {
+            $sql = $query->toSql();
+            $bindings = $query->getBindings();
+        } else {
+            $sql = $query;
+            $bindings = [];
+        }
+
+        $this->wheres[] = [
+            'type' => 'not_exists',
+            'query' => $sql,
+            'boolean' => 'and'
+        ];
+
+        $this->bindings = array_merge($this->bindings, $bindings);
+
+        return $this;
+    }
+
+    /**
      * 预加载关联
      *
      * 支持多种格式：
@@ -356,6 +492,21 @@ class QueryBuilder
      */
     public function count(): int
     {
+        // 如果使用了 FROM 子查询或 GROUP BY，需要特殊处理
+        if ($this->fromSubquery !== null || !empty($this->groups)) {
+            // 将当前查询作为子查询，外层包装 COUNT(*)
+            $subQuery = clone $this;
+
+            // 创建新的查询来包装子查询
+            $countQuery = new static($this->modelClass);
+            $countQuery->fromSub($subQuery, 'count_wrapper');
+            $countQuery->select('COUNT(*) as count');
+
+            $result = $countQuery->connection->select($countQuery->toSql(), $countQuery->getBindings());
+            return (int) ($result[0]['count'] ?? 0);
+        }
+
+        // 标准查询：直接替换 SELECT 列
         $originalColumns = $this->columns;
         $this->columns = ['COUNT(*) as count'];
 
@@ -399,8 +550,20 @@ class QueryBuilder
      */
     public function toSql(): string
     {
-        $table = $this->getFullTableName();
         $columns = implode(', ', $this->columns);
+
+        // 处理 FROM 子查询
+        if ($this->fromSubquery !== null) {
+            if ($this->fromSubquery instanceof QueryBuilder) {
+                // 使用 toRawSql() 获取已替换参数的完整 SQL
+                $subSql = $this->fromSubquery->toRawSql();
+            } else {
+                $subSql = $this->fromSubquery;
+            }
+            $table = "({$subSql}) as {$this->fromSubqueryAlias}";
+        } else {
+            $table = $this->getFullTableName();
+        }
 
         $sql = "SELECT {$columns} FROM {$table}";
 
@@ -452,7 +615,13 @@ class QueryBuilder
         $sql = $this->toSql();
         $bindings = $this->getBindings();
 
-        return sprintf($sql, ...$bindings);
+        // 使用 wpdb 的 prepare 方法来安全地替换参数
+        if (!empty($bindings)) {
+            global $wpdb;
+            return $wpdb->prepare($sql, $bindings);
+        }
+
+        return $sql;
     }
 
     /**
@@ -476,6 +645,18 @@ class QueryBuilder
                 case 'not_in':
                     $placeholders = implode(', ', array_fill(0, count($where['values']), '%s'));
                     $clauses[] = $boolean . "{$where['column']} NOT IN ({$placeholders})";
+                    break;
+                case 'in_sub':
+                    $clauses[] = $boolean . "{$where['column']} IN ({$where['query']})";
+                    break;
+                case 'not_in_sub':
+                    $clauses[] = $boolean . "{$where['column']} NOT IN ({$where['query']})";
+                    break;
+                case 'exists':
+                    $clauses[] = $boolean . "EXISTS ({$where['query']})";
+                    break;
+                case 'not_exists':
+                    $clauses[] = $boolean . "NOT EXISTS ({$where['query']})";
                     break;
                 case 'null':
                     $clauses[] = $boolean . "{$where['column']} IS NULL";
