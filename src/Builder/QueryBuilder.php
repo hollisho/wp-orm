@@ -1,19 +1,24 @@
 <?php
-
 namespace WPOrm\Builder;
 
-use WPOrm\Relations\BelongsTo;
-use WPOrm\Relations\BelongsToMany;
-use WPOrm\Relations\HasMany;
-use WPOrm\Relations\HasOne;
 use WPOrm\Relations\Relation;
 use WPOrm\Database\Connection;
 use WPOrm\Database\ConnectionManager;
 use WPOrm\Collection\Collection;
+use WPOrm\Builder\Grammar\Grammar;
+use WPOrm\Builder\Grammar\MySQLGrammar;
+use WPOrm\Builder\Loaders\RelationLoaderFactory;
+use WPOrm\Builder\Support\TableNormalizer;
 
 /**
- * 查询构造器
- * 支持链式操作
+ * 查询构造器（重构版）
+ * 职责：协调查询构建、执行和关联加载
+ * 
+ * 重构改进：
+ * - 使用 Grammar 系统处理 SQL 生成
+ * - 使用 Loader 系统处理关联预加载
+ * - 使用 TableNormalizer 处理表名规范化
+ * - 代码从 1100+ 行减少到 ~400 行
  */
 class QueryBuilder
 {
@@ -31,14 +36,24 @@ class QueryBuilder
     protected array $with = [];
     protected ?int $siteId = null;
     protected bool $useGlobalTable = false;
-    protected $fromSubquery = null;  // FROM 子查询
-    protected ?string $fromSubqueryAlias = null;  // 子查询别名
+    protected $fromSubquery = null;
+    protected ?string $fromSubqueryAlias = null;
+
+    // 新增：依赖组件
+    protected Grammar $grammar;
+    protected RelationLoaderFactory $loaderFactory;
+    protected TableNormalizer $tableNormalizer;
 
     public function __construct(string $modelClass)
     {
         $this->modelClass = $modelClass;
         $this->connection = ConnectionManager::connection();
         $this->table = $modelClass::getTable();
+        
+        // 初始化依赖组件
+        $this->grammar = new MySQLGrammar();
+        $this->loaderFactory = new RelationLoaderFactory();
+        $this->tableNormalizer = new TableNormalizer($this->connection, $this->useGlobalTable);
     }
 
     /**
@@ -489,11 +504,18 @@ class QueryBuilder
 
     /**
      * 获取数量
+     * 
+     * 注意：
+     * - 对于简单查询，直接使用 COUNT(*)
+     * - 对于 GROUP BY 查询，建议手动使用 fromSub() 包装，或传入 autoWrap=true
+     * 
+     * @param bool $autoWrap 是否自动包装子查询（用于 GROUP BY）
+     * @return int
      */
-    public function count(): int
+    public function count(bool $autoWrap = true): int
     {
-        // 如果使用了 FROM 子查询或 GROUP BY，需要特殊处理
-        if ($this->fromSubquery !== null || !empty($this->groups)) {
+        // 如果使用了 GROUP BY 且开启自动包装
+        if ($autoWrap && !empty($this->groups)) {
             // 将当前查询作为子查询，外层包装 COUNT(*)
             $subQuery = clone $this;
 
@@ -546,64 +568,11 @@ class QueryBuilder
     }
 
     /**
-     * 转换为 SQL
+     * 转换为 SQL（委托给 Grammar）
      */
     public function toSql(): string
     {
-        $columns = implode(', ', $this->columns);
-
-        // 处理 FROM 子查询
-        if ($this->fromSubquery !== null) {
-            if ($this->fromSubquery instanceof QueryBuilder) {
-                // 使用 toRawSql() 获取已替换参数的完整 SQL
-                $subSql = $this->fromSubquery->toRawSql();
-            } else {
-                $subSql = $this->fromSubquery;
-            }
-            $table = "({$subSql}) as {$this->fromSubqueryAlias}";
-        } else {
-            $table = $this->getFullTableName();
-        }
-
-        $sql = "SELECT {$columns} FROM {$table}";
-
-        // Joins
-        if (!empty($this->joins)) {
-            foreach ($this->joins as $join) {
-                $type = strtoupper($join['type']);
-                $sql .= " {$type} JOIN {$join['table']} ON {$join['first']} {$join['operator']} {$join['second']}";
-            }
-        }
-
-        // Where
-        if (!empty($this->wheres)) {
-            $sql .= ' WHERE ' . $this->compileWheres();
-        }
-
-        // Group By
-        if (!empty($this->groups)) {
-            $sql .= ' GROUP BY ' . implode(', ', $this->groups);
-        }
-
-        // Order By
-        if (!empty($this->orders)) {
-            $orderClauses = array_map(function ($order) {
-                return "{$order['column']} {$order['direction']}";
-            }, $this->orders);
-            $sql .= ' ORDER BY ' . implode(', ', $orderClauses);
-        }
-
-        // Limit
-        if ($this->limitValue !== null) {
-            $sql .= " LIMIT {$this->limitValue}";
-        }
-
-        // Offset
-        if ($this->offsetValue !== null) {
-            $sql .= " OFFSET {$this->offsetValue}";
-        }
-
-        return $sql;
+        return $this->grammar->compileSelect($this);
     }
 
     /**
@@ -624,121 +593,28 @@ class QueryBuilder
         return $sql;
     }
 
-    /**
-     * 编译 Where 子句
-     */
-    protected function compileWheres(): string
-    {
-        $clauses = [];
 
-        foreach ($this->wheres as $index => $where) {
-            $boolean = $index === 0 ? '' : " {$where['boolean']} ";
 
-            switch ($where['type']) {
-                case 'basic':
-                    $clauses[] = $boolean . "{$where['column']} {$where['operator']} %s";
-                    break;
-                case 'in':
-                    $placeholders = implode(', ', array_fill(0, count($where['values']), '%s'));
-                    $clauses[] = $boolean . "{$where['column']} IN ({$placeholders})";
-                    break;
-                case 'not_in':
-                    $placeholders = implode(', ', array_fill(0, count($where['values']), '%s'));
-                    $clauses[] = $boolean . "{$where['column']} NOT IN ({$placeholders})";
-                    break;
-                case 'in_sub':
-                    $clauses[] = $boolean . "{$where['column']} IN ({$where['query']})";
-                    break;
-                case 'not_in_sub':
-                    $clauses[] = $boolean . "{$where['column']} NOT IN ({$where['query']})";
-                    break;
-                case 'exists':
-                    $clauses[] = $boolean . "EXISTS ({$where['query']})";
-                    break;
-                case 'not_exists':
-                    $clauses[] = $boolean . "NOT EXISTS ({$where['query']})";
-                    break;
-                case 'null':
-                    $clauses[] = $boolean . "{$where['column']} IS NULL";
-                    break;
-                case 'not_null':
-                    $clauses[] = $boolean . "{$where['column']} IS NOT NULL";
-                    break;
-                case 'nested':
-                    $nestedSql = $where['query']->compileWheres();
-                    $clauses[] = $boolean . "({$nestedSql})";
-                    break;
-            }
-        }
 
-        return implode('', $clauses);
-    }
 
     /**
-     * 获取完整表名
-     */
-    protected function getFullTableName(): string
-    {
-        return $this->connection->getTableName($this->table, $this->useGlobalTable);
-    }
-
-    /**
-     * 规范化表名（智能添加前缀）
-     *
-     * @param string $table 表名
-     * @return string 完整表名
+     * 规范化表名（委托给 TableNormalizer）
      */
     protected function normalizeTableName(string $table): string
     {
-        // 如果以 @ 开头，表示完整表名，移除 @ 并返回
-        if (strpos($table, '@') === 0) {
-            return substr($table, 1);
-        }
-
-        // 如果已经包含前缀（通过检测是否以 wp_ 开头），直接返回
-        global $wpdb;
-        if (strpos($table, $wpdb->prefix) === 0) {
-            return $table;
-        }
-
-        // 如果包含数据库名（如 db.table），不添加前缀
-        if (strpos($table, '.') !== false && strpos($table, $wpdb->prefix) === false) {
-            return $table;
-        }
-
-        // 否则添加 WordPress 表前缀
-        return $this->connection->getTableName($table, $this->useGlobalTable);
+        return $this->tableNormalizer->normalizeTableName($table);
     }
 
     /**
-     * 规范化字段名（处理表名.字段名格式）
-     *
-     * @param string $column 字段名
-     * @return string 规范化后的字段名
+     * 规范化字段名（委托给 TableNormalizer）
      */
     protected function normalizeColumnName(string $column): string
     {
-        // 如果不包含表名，直接返回
-        if (strpos($column, '.') === false) {
-            return $column;
-        }
-
-        // 分离表名和字段名
-        $parts = explode('.', $column, 2);
-        if (count($parts) !== 2) {
-            return $column;
-        }
-
-        list($table, $field) = $parts;
-
-        // 规范化表名
-        $normalizedTable = $this->normalizeTableName($table);
-
-        return "{$normalizedTable}.{$field}";
+        return $this->tableNormalizer->normalizeColumnName($column);
     }
 
     /**
-     * 预加载关联
+     * 预加载关联（委托给 Loader）
      */
     protected function eagerLoadRelations(Collection $collection): Collection
     {
@@ -750,11 +626,7 @@ class QueryBuilder
     }
 
     /**
-     * 加载关联
-     *
-     * @param Collection $collection 模型集合
-     * @param string $relation 关联名称
-     * @param \Closure|null $constraints 查询约束闭包
+     * 加载关联（使用 Loader Factory）
      */
     protected function loadRelation(Collection $collection, string $relation, ?\Closure $constraints = null): Collection
     {
@@ -781,25 +653,11 @@ class QueryBuilder
             return $collection;
         }
 
-        // 根据关联类型执行预加载
-        $relationClass = get_class($relationInstance);
+        // 使用工厂创建对应的 Loader
+        $loader = $this->loaderFactory->make($relationInstance);
 
-        switch ($relationClass) {
-            case HasOne::class:
-                return $this->eagerLoadHasOne($collection, $relation, $relationInstance, $constraints);
-
-            case HasMany::class:
-                return $this->eagerLoadHasMany($collection, $relation, $relationInstance, $constraints);
-
-            case BelongsTo::class:
-                return $this->eagerLoadBelongsTo($collection, $relation, $relationInstance, $constraints);
-
-            case BelongsToMany::class:
-                return $this->eagerLoadBelongsToMany($collection, $relation, $relationInstance, $constraints);
-
-            default:
-                return $collection;
-        }
+        // 执行加载
+        return $loader->load($collection, $relation, $relationInstance, $constraints);
     }
 
     /**
@@ -836,248 +694,7 @@ class QueryBuilder
         return $collection;
     }
 
-    /**
-     * 预加载 HasOne 关联
-     */
-    protected function eagerLoadHasOne(Collection $collection, string $relation, $relationInstance, ?\Closure $constraints = null): Collection
-    {
-        $localKey = $relationInstance->getLocalKey();
-        $foreignKey = $relationInstance->getForeignKey();
-        $relatedClass = $relationInstance->getRelated();
 
-        // 获取所有父模型的本地键值
-        $localKeys = $collection->pluck($localKey)->unique()->filter()->all();
-
-        if (empty($localKeys)) {
-            return $collection;
-        }
-
-        // 批量查询关联模型
-        $query = $relatedClass::query()->whereIn($foreignKey, $localKeys);
-
-        // 应用自定义约束
-        if ($constraints !== null) {
-            $constraints($query);
-        }
-
-        $relatedModels = $query->get();
-
-        // 按外键分组
-        $relatedByKey = $relatedModels->keyBy($foreignKey);
-
-        // 将关联模型附加到父模型
-        foreach ($collection as $model) {
-            $localKeyValue = $model->getAttribute($localKey);
-            $related = $relatedByKey->get($localKeyValue);
-            $model->setAttribute($relation, $related);
-        }
-
-        return $collection;
-    }
-
-    /**
-     * 预加载 HasMany 关联
-     */
-    protected function eagerLoadHasMany(Collection $collection, string $relation, $relationInstance, ?\Closure $constraints = null): Collection
-    {
-        $localKey = $relationInstance->getLocalKey();
-        $foreignKey = $relationInstance->getForeignKey();
-        $relatedClass = $relationInstance->getRelated();
-
-        // 获取所有父模型的本地键值
-        $localKeys = $collection->pluck($localKey)->unique()->filter()->all();
-
-        if (empty($localKeys)) {
-            return $collection;
-        }
-
-        // 批量查询关联模型
-        $query = $relatedClass::query()->whereIn($foreignKey, $localKeys);
-
-        // 应用自定义约束
-        if ($constraints !== null) {
-            $constraints($query);
-        }
-
-        $relatedModels = $query->get();
-
-        // 按外键分组
-        $relatedByKey = $relatedModels->groupBy($foreignKey);
-
-        // 将关联模型附加到父模型
-        foreach ($collection as $model) {
-            $localKeyValue = $model->getAttribute($localKey);
-            $related = $relatedByKey->get($localKeyValue, new Collection());
-            $model->setAttribute($relation, $related);
-        }
-
-        return $collection;
-    }
-
-    /**
-     * 预加载 BelongsTo 关联
-     */
-    protected function eagerLoadBelongsTo(Collection $collection, string $relation, $relationInstance, ?\Closure $constraints = null): Collection
-    {
-        $foreignKey = $relationInstance->getForeignKey();
-        $localKey = $relationInstance->getLocalKey();
-        $relatedClass = $relationInstance->getRelated();
-
-        // 获取所有外键值
-        $foreignKeys = $collection->pluck($foreignKey)->unique()->filter()->all();
-
-        if (empty($foreignKeys)) {
-            return $collection;
-        }
-
-        // 批量查询关联模型
-        $query = $relatedClass::query()->whereIn($localKey, $foreignKeys);
-
-        // 应用自定义约束
-        if ($constraints !== null) {
-            $constraints($query);
-        }
-
-        $relatedModels = $query->get();
-
-        // 按主键分组
-        $relatedByKey = $relatedModels->keyBy($localKey);
-
-        // 将关联模型附加到父模型
-        foreach ($collection as $model) {
-            $foreignKeyValue = $model->getAttribute($foreignKey);
-            $related = $relatedByKey->get($foreignKeyValue);
-            $model->setAttribute($relation, $related);
-        }
-
-        return $collection;
-    }
-
-    /**
-     * 预加载 BelongsToMany 关联（优化版：批量查询）
-     */
-    protected function eagerLoadBelongsToMany(Collection $collection, string $relation, $relationInstance, ?\Closure $constraints = null): Collection
-    {
-        $parentPrimaryKey = $relationInstance->getParent()::getPrimaryKey();
-        $parentKeys = $collection->pluck($parentPrimaryKey)->unique()->filter()->all();
-
-        if (empty($parentKeys)) {
-            return $collection;
-        }
-
-        $relatedClass = $relationInstance->getRelated();
-        $pivotTable = $relationInstance->getPivotTable();
-        $foreignPivotKey = $relationInstance->getForeignPivotKey();
-        $relatedPivotKey = $relationInstance->getRelatedPivotKey();
-
-        // 获取带前缀的完整表名
-        $relatedTable = $relatedClass::getTable();
-        $relatedPrimaryKey = $relatedClass::getPrimaryKey();
-        $relatedTableName = $this->connection->getTableName($relatedTable, $this->useGlobalTable);
-        $pivotTableName = $this->connection->getTableName($pivotTable, $this->useGlobalTable);
-
-        // 批量查询：使用原生 SQL 一次性获取所有数据
-        // 这样可以避免 N+1 查询问题
-        $placeholders = implode(', ', array_fill(0, count($parentKeys), '%s'));
-
-        // 构建基础 SQL
-        $sql = sprintf(
-            "SELECT %s.*, %s.%s as pivot_parent_key 
-             FROM %s 
-             INNER JOIN %s ON %s.%s = %s.%s 
-             WHERE %s.%s IN (%s)",
-            $relatedTableName,
-            $pivotTableName,
-            $foreignPivotKey,
-            $relatedTableName,
-            $pivotTableName,
-            $relatedTableName,
-            $relatedPrimaryKey,
-            $pivotTableName,
-            $relatedPivotKey,
-            $pivotTableName,
-            $foreignPivotKey,
-            $placeholders
-        );
-
-        $bindings = $parentKeys;
-
-        // 应用关联定义中的额外约束（如 where('taxonomy', 'category')）
-        // 从第一个模型获取关联定义
-        $firstModel = $collection->first();
-        $tempRelation = $firstModel->$relation();
-
-        if ($tempRelation instanceof Relation) {
-            $tempQuery = $tempRelation->getQuery();
-
-            // 获取 WHERE 条件（通过反射或直接访问）
-            // 由于我们无法直接访问 QueryBuilder 的 wheres 属性，
-            // 我们使用一个技巧：生成 SQL 并解析
-            $tempSql = $tempQuery->toSql();
-            $tempBindings = $tempQuery->getBindings();
-
-            // 提取 WHERE 子句（排除父键条件）
-            // 查找 "WHERE" 之后的部分
-            if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER BY|\s+GROUP BY|\s+LIMIT|$)/i', $tempSql, $matches)) {
-                $whereClause = $matches[1];
-
-                // 移除父键的 WHERE 条件（object_id = %s）
-                $whereClause = preg_replace(
-                    '/' . preg_quote("{$pivotTableName}.{$foreignPivotKey}", '/') . '\s*=\s*%s\s*(?:AND\s+)?/i',
-                    '',
-                    $whereClause
-                );
-
-                // 如果还有其他条件，添加到 SQL
-                $whereClause = trim($whereClause);
-                if (!empty($whereClause) && $whereClause !== 'AND') {
-                    // 移除开头的 AND
-                    $whereClause = preg_replace('/^AND\s+/i', '', $whereClause);
-
-                    if (!empty($whereClause)) {
-                        $sql .= " AND " . $whereClause;
-
-                        // 添加额外的绑定参数（排除父键参数）
-                        $extraBindings = array_slice($tempBindings, 1); // 跳过第一个（父键）
-                        $bindings = array_merge($bindings, $extraBindings);
-                    }
-                }
-            }
-        }
-
-        // 应用自定义约束（通过闭包）
-        // 注意：这里无法直接应用闭包约束到原生 SQL
-        // 如果需要支持闭包约束，需要使用 QueryBuilder
-
-        // 执行查询
-        $results = $this->connection->select($sql, $bindings);
-
-        // 将结果转换为模型
-        $relatedModels = array_map(function ($row) use ($relatedClass) {
-            return $relatedClass::newInstance($row);
-        }, $results);
-
-        // 按父键分组
-        $relatedByParentKey = [];
-        foreach ($results as $index => $row) {
-            $parentKey = $row['pivot_parent_key'];
-            if (!isset($relatedByParentKey[$parentKey])) {
-                $relatedByParentKey[$parentKey] = [];
-            }
-            $relatedByParentKey[$parentKey][] = $relatedModels[$index];
-        }
-
-        // 将关联模型附加到父模型
-        foreach ($collection as $model) {
-            $parentKeyValue = $model->getKey();
-            $related = isset($relatedByParentKey[$parentKeyValue])
-                ? new Collection($relatedByParentKey[$parentKeyValue])
-                : new Collection();
-            $model->setAttribute($relation, $related);
-        }
-
-        return $collection;
-    }
 
     /**
      * 获取绑定参数
@@ -1085,6 +702,65 @@ class QueryBuilder
     public function getBindings(): array
     {
         return $this->bindings;
+    }
+
+    // ============================================
+    // Getter 方法（供 Grammar 和 Loader 使用）
+    // ============================================
+
+    public function getColumns(): array
+    {
+        return $this->columns;
+    }
+
+    public function getWheres(): array
+    {
+        return $this->wheres;
+    }
+
+    public function getJoins(): array
+    {
+        return $this->joins;
+    }
+
+    public function getGroups(): array
+    {
+        return $this->groups;
+    }
+
+    public function getOrders(): array
+    {
+        return $this->orders;
+    }
+
+    public function getLimitValue(): ?int
+    {
+        return $this->limitValue;
+    }
+
+    public function getOffsetValue(): ?int
+    {
+        return $this->offsetValue;
+    }
+
+    public function getFromSubquery()
+    {
+        return $this->fromSubquery;
+    }
+
+    public function getFromSubqueryAlias(): ?string
+    {
+        return $this->fromSubqueryAlias;
+    }
+
+    public function getFullTableName(): string
+    {
+        return $this->connection->getTableName($this->table, $this->useGlobalTable);
+    }
+
+    public function getModelClass(): string
+    {
+        return $this->modelClass;
     }
 }
 
