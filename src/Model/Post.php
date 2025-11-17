@@ -2,7 +2,6 @@
 
 namespace WPOrm\Model;
 
-use WPOrm\Database\ConnectionManager;
 use WPOrm\Relations\BelongsTo;
 use WPOrm\Relations\BelongsToMany;
 use WPOrm\Relations\HasMany;
@@ -49,15 +48,12 @@ class Post extends Model
      */
     public function categories()
     {
-        $connection = ConnectionManager::connection();
-        $termTaxonomyTable = $connection->getTableName('term_taxonomy');
-
         return $this->belongsToMany(
             TermTaxonomy::class,
             'term_relationships',
             'object_id',
             'term_taxonomy_id'
-        )->where("{$termTaxonomyTable}.taxonomy", 'category');
+        )->where('term_taxonomy.taxonomy', 'category');
     }
 
     /**
@@ -65,15 +61,12 @@ class Post extends Model
      */
     public function tags()
     {
-        $connection = ConnectionManager::connection();
-        $termTaxonomyTable = $connection->getTableName('term_taxonomy');
-
         return $this->belongsToMany(
             TermTaxonomy::class,
             'term_relationships',
             'object_id',
             'term_taxonomy_id'
-        )->where("{$termTaxonomyTable}.taxonomy", 'post_tag');
+        )->where('term_taxonomy.taxonomy', 'post_tag');
     }
 
     /**

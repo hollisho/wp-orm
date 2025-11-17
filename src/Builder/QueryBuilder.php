@@ -75,6 +75,9 @@ class QueryBuilder
             $operator = '=';
         }
 
+        // 规范化字段名（自动添加表前缀）
+        $column = $this->normalizeColumnName($column);
+
         $this->wheres[] = [
             'type' => 'basic',
             'column' => $column,
@@ -235,8 +238,10 @@ class QueryBuilder
      */
     public function join(string $table, string $first, string $operator, string $second, string $type = 'inner'): self
     {
-        // 获取带前缀的完整表名
-        $fullTable = $this->connection->getTableName($table, $this->useGlobalTable);
+        // 规范化表名和字段名（自动添加表前缀）
+        $fullTable = $this->normalizeTableName($table);
+        $first = $this->normalizeColumnName($first);
+        $second = $this->normalizeColumnName($second);
 
         $this->joins[] = [
             'type' => $type,
@@ -494,6 +499,61 @@ class QueryBuilder
     protected function getFullTableName(): string
     {
         return $this->connection->getTableName($this->table, $this->useGlobalTable);
+    }
+
+    /**
+     * 规范化表名（智能添加前缀）
+     *
+     * @param string $table 表名
+     * @return string 完整表名
+     */
+    protected function normalizeTableName(string $table): string
+    {
+        // 如果以 @ 开头，表示完整表名，移除 @ 并返回
+        if (strpos($table, '@') === 0) {
+            return substr($table, 1);
+        }
+
+        // 如果已经包含前缀（通过检测是否以 wp_ 开头），直接返回
+        global $wpdb;
+        if (strpos($table, $wpdb->prefix) === 0) {
+            return $table;
+        }
+
+        // 如果包含数据库名（如 db.table），不添加前缀
+        if (strpos($table, '.') !== false && strpos($table, $wpdb->prefix) === false) {
+            return $table;
+        }
+
+        // 否则添加 WordPress 表前缀
+        return $this->connection->getTableName($table, $this->useGlobalTable);
+    }
+
+    /**
+     * 规范化字段名（处理表名.字段名格式）
+     *
+     * @param string $column 字段名
+     * @return string 规范化后的字段名
+     */
+    protected function normalizeColumnName(string $column): string
+    {
+        // 如果不包含表名，直接返回
+        if (strpos($column, '.') === false) {
+            return $column;
+        }
+
+        // 分离表名和字段名
+        $parts = explode('.', $column, 2);
+        if (count($parts) !== 2) {
+            return $column;
+        }
+
+        list($table, $field) = $parts;
+
+        // 规范化表名
+        $normalizedTable = $this->normalizeTableName($table);
+
+        return "{$normalizedTable}.{$field}";
     }
 
     /**

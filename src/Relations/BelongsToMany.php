@@ -3,7 +3,6 @@
 namespace WPOrm\Relations;
 
 use WPOrm\Builder\QueryBuilder;
-use WPOrm\Database\ConnectionManager;
 
 /**
  * 多对多关联
@@ -51,22 +50,17 @@ class BelongsToMany extends Relation
             $relatedPrimaryKey = $this->related::getPrimaryKey();
             $pivotTable = $this->pivotTable;
 
-            // 获取带前缀的完整表名
-            $connection = ConnectionManager::connection();
-            $fullRelatedTable = $connection->getTableName($relatedTable);
-            $fullPivotTable = $connection->getTableName($pivotTable);
-
             // 标准的多对多关联：通过中间表连接
             // parent_table -> pivot_table -> related_table
-            // 注意：join() 方法会自动添加表前缀，但 ON 条件中的字段引用需要使用完整表名
+            // join() 和 where() 方法会自动添加表前缀
             $query->join(
                 $pivotTable,
-                "{$fullRelatedTable}.{$relatedPrimaryKey}",
+                "{$relatedTable}.{$relatedPrimaryKey}",
                 '=',
-                "{$fullPivotTable}.{$this->relatedPivotKey}"
+                "{$pivotTable}.{$this->relatedPivotKey}"
             );
 
-            $query->where("{$fullPivotTable}.{$this->foreignPivotKey}", '=', $parentKey);
+            $query->where("{$pivotTable}.{$this->foreignPivotKey}", '=', $parentKey);
         }
     }
 
