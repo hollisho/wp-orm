@@ -3,6 +3,7 @@
 namespace WPOrm\Relations;
 
 use WPOrm\Builder\QueryBuilder;
+use WPOrm\Database\ConnectionManager;
 
 /**
  * 多对多关联
@@ -12,6 +13,7 @@ class BelongsToMany extends Relation
     protected string $pivotTable;
     protected string $foreignPivotKey;
     protected string $relatedPivotKey;
+    protected ?QueryBuilder $query = null;
 
     public function __construct(
         $parent,
@@ -29,20 +31,49 @@ class BelongsToMany extends Relation
 
     public function getQuery(): QueryBuilder
     {
-        $query = $this->related::query();
-        $this->addConstraints();
-        return $query;
+        if ($this->query === null) {
+            $this->query = $this->related::query();
+            $this->addConstraints($this->query);
+        }
+        return $this->query;
     }
 
-    public function addConstraints(): void
+    public function addConstraints(?QueryBuilder $query = null): void
     {
-        // 添加中间表约束
+        if ($query === null) {
+            return;
+        }
+
+        $parentKey = $this->parent->getKey();
+
+        if ($parentKey) {
+            $relatedTable = $this->related::getTable();
+            $relatedPrimaryKey = $this->related::getPrimaryKey();
+            $pivotTable = $this->pivotTable;
+
+            // 获取带前缀的完整表名
+            $connection = ConnectionManager::connection();
+            $fullRelatedTable = $connection->getTableName($relatedTable);
+            $fullPivotTable = $connection->getTableName($pivotTable);
+
+            // 标准的多对多关联：通过中间表连接
+            // parent_table -> pivot_table -> related_table
+            // 注意：join() 方法会自动添加表前缀，但 ON 条件中的字段引用需要使用完整表名
+            $query->join(
+                $pivotTable,
+                "{$fullRelatedTable}.{$relatedPrimaryKey}",
+                '=',
+                "{$fullPivotTable}.{$this->relatedPivotKey}"
+            );
+
+            $query->where("{$fullPivotTable}.{$this->foreignPivotKey}", '=', $parentKey);
+        }
     }
 
     public function getResults()
     {
-        // 简化实现，实际需要通过中间表查询
-        return $this->related::query()->get();
+        $query = $this->getQuery();
+        return $query->get();
     }
 
     /**

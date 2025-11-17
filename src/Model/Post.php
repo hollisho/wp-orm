@@ -2,6 +2,11 @@
 
 namespace WPOrm\Model;
 
+use WPOrm\Database\ConnectionManager;
+use WPOrm\Relations\BelongsTo;
+use WPOrm\Relations\BelongsToMany;
+use WPOrm\Relations\HasMany;
+
 /**
  * WordPress 文章模型
  */
@@ -13,7 +18,7 @@ class Post extends Model
     /**
      * 作者关联
      */
-    public function author()
+    public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'post_author');
     }
@@ -21,9 +26,22 @@ class Post extends Model
     /**
      * 评论关联
      */
-    public function comments()
+    public function comments(): HasMany
     {
         return $this->hasMany(Comment::class, 'comment_post_ID');
+    }
+
+    /**
+     * 分类法关联（通过 term_taxonomy）
+     */
+    public function termTaxonomies(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            TermTaxonomy::class,
+            'term_relationships',
+            'object_id',
+            'term_taxonomy_id'
+        );
     }
 
     /**
@@ -31,12 +49,15 @@ class Post extends Model
      */
     public function categories()
     {
+        $connection = ConnectionManager::connection();
+        $termTaxonomyTable = $connection->getTableName('term_taxonomy');
+
         return $this->belongsToMany(
-            Term::class,
+            TermTaxonomy::class,
             'term_relationships',
             'object_id',
             'term_taxonomy_id'
-        )->where('taxonomy', 'category');
+        )->where("{$termTaxonomyTable}.taxonomy", 'category');
     }
 
     /**
@@ -44,18 +65,21 @@ class Post extends Model
      */
     public function tags()
     {
+        $connection = ConnectionManager::connection();
+        $termTaxonomyTable = $connection->getTableName('term_taxonomy');
+
         return $this->belongsToMany(
-            Term::class,
+            TermTaxonomy::class,
             'term_relationships',
             'object_id',
             'term_taxonomy_id'
-        )->where('taxonomy', 'post_tag');
+        )->where("{$termTaxonomyTable}.taxonomy", 'post_tag');
     }
 
     /**
      * 元数据关联
      */
-    public function meta()
+    public function meta(): HasMany
     {
         return $this->hasMany(PostMeta::class, 'post_id');
     }

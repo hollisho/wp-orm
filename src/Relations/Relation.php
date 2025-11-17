@@ -75,6 +75,14 @@ abstract class Relation
      */
     public function __call($method, $parameters)
     {
-        return $this->getQuery()->$method(...$parameters);
+        $result = $this->getQuery()->$method(...$parameters);
+
+        // 如果返回的是 QueryBuilder 实例（链式调用），返回 Relation 实例以保持链式调用
+        if ($result instanceof QueryBuilder) {
+            return $this;
+        }
+
+        // 否则返回实际结果（如 get(), first() 等）
+        return $result;
     }
 }

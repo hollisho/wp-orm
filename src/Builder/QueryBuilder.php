@@ -235,9 +235,12 @@ class QueryBuilder
      */
     public function join(string $table, string $first, string $operator, string $second, string $type = 'inner'): self
     {
+        // 获取带前缀的完整表名
+        $fullTable = $this->connection->getTableName($table, $this->useGlobalTable);
+
         $this->joins[] = [
             'type' => $type,
-            'table' => $table,
+            'table' => $fullTable,
             'first' => $first,
             'operator' => $operator,
             'second' => $second
@@ -710,45 +713,41 @@ class QueryBuilder
     }
 
     /**
-     * 预加载 BelongsToMany 关联
-     *
-     * 注意：BelongsToMany 的约束支持有限，因为使用了原生 SQL 查询
-     * 如需复杂约束，建议在关联定义中处理
+     * 预加载 BelongsToMany 关联（优化版：批量查询）
      */
     protected function eagerLoadBelongsToMany(Collection $collection, string $relation, $relationInstance, ?\Closure $constraints = null): Collection
     {
-        $parentModel = $relationInstance->getParent();
-        $relatedClass = $relationInstance->getRelated();
-        $pivotTable = $relationInstance->getPivotTable();
-        $foreignPivotKey = $relationInstance->getForeignPivotKey();
-        $relatedPivotKey = $relationInstance->getRelatedPivotKey();
-
-        // 获取所有父模型的主键值
-        $parentPrimaryKey = $parentModel::getPrimaryKey();
+        $parentPrimaryKey = $relationInstance->getParent()::getPrimaryKey();
         $parentKeys = $collection->pluck($parentPrimaryKey)->unique()->filter()->all();
 
         if (empty($parentKeys)) {
             return $collection;
         }
 
-        // 查询中间表
-        $pivotTableName = $this->connection->getTableName($pivotTable, $this->useGlobalTable);
-        $relatedTableName = $this->connection->getTableName($relatedClass::getTable(), $this->useGlobalTable);
-        $relatedPrimaryKey = $relatedClass::getPrimaryKey();
+        $relatedClass = $relationInstance->getRelated();
+        $pivotTable = $relationInstance->getPivotTable();
+        $foreignPivotKey = $relationInstance->getForeignPivotKey();
+        $relatedPivotKey = $relationInstance->getRelatedPivotKey();
 
+        // 获取带前缀的完整表名
+        $relatedTable = $relatedClass::getTable();
+        $relatedPrimaryKey = $relatedClass::getPrimaryKey();
+        $relatedTableName = $this->connection->getTableName($relatedTable, $this->useGlobalTable);
+        $pivotTableName = $this->connection->getTableName($pivotTable, $this->useGlobalTable);
+
+        // 批量查询：使用原生 SQL 一次性获取所有数据
+        // 这样可以避免 N+1 查询问题
         $placeholders = implode(', ', array_fill(0, count($parentKeys), '%s'));
 
-        // 基础 SQL（如果有约束，这里的实现会比较复杂，暂时不支持）
+        // 构建基础 SQL
         $sql = sprintf(
-            "SELECT %s.*, %s.%s as pivot_parent_key, %s.%s as pivot_related_key 
+            "SELECT %s.*, %s.%s as pivot_parent_key 
              FROM %s 
              INNER JOIN %s ON %s.%s = %s.%s 
              WHERE %s.%s IN (%s)",
             $relatedTableName,
             $pivotTableName,
             $foreignPivotKey,
-            $pivotTableName,
-            $relatedPivotKey,
             $relatedTableName,
             $pivotTableName,
             $relatedTableName,
@@ -760,19 +759,62 @@ class QueryBuilder
             $placeholders
         );
 
-        $results = $this->connection->select($sql, $parentKeys);
+        $bindings = $parentKeys;
+
+        // 应用关联定义中的额外约束（如 where('taxonomy', 'category')）
+        // 从第一个模型获取关联定义
+        $firstModel = $collection->first();
+        $tempRelation = $firstModel->$relation();
+
+        if ($tempRelation instanceof Relation) {
+            $tempQuery = $tempRelation->getQuery();
+
+            // 获取 WHERE 条件（通过反射或直接访问）
+            // 由于我们无法直接访问 QueryBuilder 的 wheres 属性，
+            // 我们使用一个技巧：生成 SQL 并解析
+            $tempSql = $tempQuery->toSql();
+            $tempBindings = $tempQuery->getBindings();
+
+            // 提取 WHERE 子句（排除父键条件）
+            // 查找 "WHERE" 之后的部分
+            if (preg_match('/WHERE\s+(.+?)(?:\s+ORDER BY|\s+GROUP BY|\s+LIMIT|$)/i', $tempSql, $matches)) {
+                $whereClause = $matches[1];
+
+                // 移除父键的 WHERE 条件（object_id = %s）
+                $whereClause = preg_replace(
+                    '/' . preg_quote("{$pivotTableName}.{$foreignPivotKey}", '/') . '\s*=\s*%s\s*(?:AND\s+)?/i',
+                    '',
+                    $whereClause
+                );
+
+                // 如果还有其他条件，添加到 SQL
+                $whereClause = trim($whereClause);
+                if (!empty($whereClause) && $whereClause !== 'AND') {
+                    // 移除开头的 AND
+                    $whereClause = preg_replace('/^AND\s+/i', '', $whereClause);
+
+                    if (!empty($whereClause)) {
+                        $sql .= " AND " . $whereClause;
+
+                        // 添加额外的绑定参数（排除父键参数）
+                        $extraBindings = array_slice($tempBindings, 1); // 跳过第一个（父键）
+                        $bindings = array_merge($bindings, $extraBindings);
+                    }
+                }
+            }
+        }
+
+        // 应用自定义约束（通过闭包）
+        // 注意：这里无法直接应用闭包约束到原生 SQL
+        // 如果需要支持闭包约束，需要使用 QueryBuilder
+
+        // 执行查询
+        $results = $this->connection->select($sql, $bindings);
 
         // 将结果转换为模型
         $relatedModels = array_map(function ($row) use ($relatedClass) {
             return $relatedClass::newInstance($row);
         }, $results);
-
-        // 如果有约束，对结果进行过滤（这是一个简化的实现）
-        if ($constraints !== null && !empty($relatedModels)) {
-            $tempCollection = new Collection($relatedModels);
-            // 注意：这里的约束应用是在内存中进行的，不如在 SQL 中高效
-            // 但对于 BelongsToMany，在 SQL 层面应用约束比较复杂
-        }
 
         // 按父键分组
         $relatedByParentKey = [];
@@ -804,3 +846,4 @@ class QueryBuilder
         return $this->bindings;
     }
 }
+
