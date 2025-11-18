@@ -9,21 +9,29 @@ use WPOrm\Builder\QueryBuilder;
  */
 class BelongsTo extends Relation
 {
+    protected ?QueryBuilder $query = null;
+
     public function getQuery(): QueryBuilder
     {
-        $query = $this->related::query();
-        $this->addConstraints();
-        return $query;
+        if ($this->query === null) {
+            $this->query = $this->related::query();
+            $this->addConstraints();
+        }
+        return $this->query;
     }
 
     public function addConstraints(): void
     {
-        // 添加约束
+        if ($this->query !== null) {
+            $foreignValue = $this->parent->getAttribute($this->foreignKey);
+            if ($foreignValue !== null) {
+                $this->query->where($this->localKey, $foreignValue);
+            }
+        }
     }
 
     public function getResults()
     {
-        $foreignValue = $this->parent->getAttribute($this->foreignKey);
-        return $this->related::query()->where($this->localKey, $foreignValue)->first();
+        return $this->getQuery()->first();
     }
 }

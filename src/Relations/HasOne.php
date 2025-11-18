@@ -9,21 +9,29 @@ use WPOrm\Builder\QueryBuilder;
  */
 class HasOne extends Relation
 {
+    protected ?QueryBuilder $query = null;
+
     public function getQuery(): QueryBuilder
     {
-        $query = $this->related::query();
-        $this->addConstraints();
-        return $query;
+        if ($this->query === null) {
+            $this->query = $this->related::query();
+            $this->addConstraints();
+        }
+        return $this->query;
     }
 
     public function addConstraints(): void
     {
-        // 添加外键约束
+        if ($this->query !== null) {
+            $localValue = $this->parent->getAttribute($this->localKey);
+            if ($localValue !== null) {
+                $this->query->where($this->foreignKey, $localValue);
+            }
+        }
     }
 
     public function getResults()
     {
-        $foreignValue = $this->parent->getAttribute($this->localKey);
-        return $this->related::query()->where($this->foreignKey, $foreignValue)->first();
+        return $this->getQuery()->first();
     }
 }
