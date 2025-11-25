@@ -11,11 +11,13 @@ class JoinClause
     protected string $table;
     protected array $conditions = [];
     protected array $bindings = [];
+    protected $columnNormalizer = null;
 
-    public function __construct(string $type, string $table)
+    public function __construct(string $type, string $table, callable $columnNormalizer = null)
     {
         $this->type = $type;
         $this->table = $table;
+        $this->columnNormalizer = $columnNormalizer;
     }
 
     /**
@@ -23,6 +25,12 @@ class JoinClause
      */
     public function on(string $first, string $operator, string $second, string $boolean = 'and'): self
     {
+        // 规范化列名
+        if ($this->columnNormalizer) {
+            $first = ($this->columnNormalizer)($first);
+            $second = ($this->columnNormalizer)($second);
+        }
+
         $this->conditions[] = [
             'type' => 'column',
             'first' => $first,
@@ -47,6 +55,11 @@ class JoinClause
      */
     public function where(string $column, string $operator, $value, string $boolean = 'and'): self
     {
+        // 规范化列名
+        if ($this->columnNormalizer) {
+            $column = ($this->columnNormalizer)($column);
+        }
+
         $this->conditions[] = [
             'type' => 'value',
             'column' => $column,

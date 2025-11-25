@@ -50,20 +50,50 @@ class JoinCompiler
         $isFirst = true;
 
         foreach ($conditions as $condition) {
-            $boolean = $isFirst ? '' : strtoupper($condition['boolean']) . ' ';
-            $isFirst = false;
-
             if ($condition['type'] === 'column') {
                 // 列与列的比较: table1.id = table2.id
-                $onClauses[] = "{$boolean}{$condition['first']} {$condition['operator']} {$condition['second']}";
+                $clause = "{$condition['first']} {$condition['operator']} {$condition['second']}";
             } elseif ($condition['type'] === 'value') {
-                // 列与值的比较: table.column = ?
-                $onClauses[] = "{$boolean}{$condition['column']} {$condition['operator']} ?";
+                // 列与值的比较: 直接嵌入值（需要转义）
+                $value = $this->escapeValue($condition['value']);
+                $clause = "{$condition['column']} {$condition['operator']} {$value}";
+            } else {
+                continue;
             }
+
+            // 第一个条件不需要 boolean 前缀
+            if (!$isFirst) {
+                $clause = strtoupper($condition['boolean']) . ' ' . $clause;
+            }
+            $isFirst = false;
+
+            $onClauses[] = $clause;
         }
 
         $onClause = implode(' ', $onClauses);
 
         return "{$type} JOIN {$table} ON {$onClause}";
+    }
+
+    /**
+     * 转义值（用于 JOIN 条件）
+     */
+    protected function escapeValue($value): string
+    {
+        if (is_null($value)) {
+            return 'NULL';
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (is_numeric($value)) {
+            return (string) $value;
+        }
+
+        // 字符串需要转义并加引号
+        global $wpdb;
+        return "'" . $wpdb->_real_escape($value) . "'";
     }
 }

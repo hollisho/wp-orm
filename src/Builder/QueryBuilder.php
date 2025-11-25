@@ -49,7 +49,7 @@ class QueryBuilder
         $this->modelClass = $modelClass;
         $this->connection = ConnectionManager::connection();
         $this->table = $modelClass::getTable();
-        
+
         // 初始化依赖组件
         $this->grammar = new MySQLGrammar();
         $this->loaderFactory = new RelationLoaderFactory();
@@ -260,7 +260,7 @@ class QueryBuilder
 
         // 支持闭包形式的复杂 JOIN 条件
         if ($first instanceof \Closure) {
-            $joinClause = new JoinClause($type, $fullTable);
+            $joinClause = new JoinClause($type, $fullTable, [$this, 'normalizeColumnName']);
             $first($joinClause);
             $this->joins[] = $joinClause;
         } else {
@@ -268,7 +268,7 @@ class QueryBuilder
             $first = $this->normalizeColumnName($first);
             $second = $this->normalizeColumnName($second);
 
-            $joinClause = new JoinClause($type, $fullTable);
+            $joinClause = new JoinClause($type, $fullTable, [$this, 'normalizeColumnName']);
             $joinClause->on($first, $operator, $second);
             $this->joins[] = $joinClause;
         }
@@ -517,11 +517,11 @@ class QueryBuilder
 
     /**
      * 获取数量
-     * 
+     *
      * 注意：
      * - 对于简单查询，直接使用 COUNT(*)
      * - 对于 GROUP BY 查询，建议手动使用 fromSub() 包装，或传入 autoWrap=true
-     * 
+     *
      * @param bool $autoWrap 是否自动包装子查询（用于 GROUP BY）
      * @return int
      */
@@ -613,7 +613,7 @@ class QueryBuilder
     /**
      * 规范化表名（委托给 TableNormalizer）
      */
-    protected function normalizeTableName(string $table): string
+    public function normalizeTableName(string $table): string
     {
         return $this->tableNormalizer->normalizeTableName($table);
     }
@@ -621,7 +621,7 @@ class QueryBuilder
     /**
      * 规范化字段名（委托给 TableNormalizer）
      */
-    protected function normalizeColumnName(string $column): string
+    public function normalizeColumnName(string $column): string
     {
         return $this->tableNormalizer->normalizeColumnName($column);
     }
@@ -714,27 +714,9 @@ class QueryBuilder
      */
     public function getBindings(): array
     {
-        // 合并 JOIN 子句的绑定参数
-        $joinBindings = $this->getJoinBindings();
-        
-        // JOIN 绑定应该在 WHERE 绑定之前
-        return array_merge($joinBindings, $this->bindings);
-    }
-
-    /**
-     * 获取 JOIN 子句的绑定参数
-     */
-    protected function getJoinBindings(): array
-    {
-        $bindings = [];
-
-        foreach ($this->joins as $join) {
-            if ($join instanceof JoinClause) {
-                $bindings = array_merge($bindings, $join->getBindings());
-            }
-        }
-
-        return $bindings;
+        // 注意：JOIN 条件的值已经直接嵌入到 SQL 中，不需要作为绑定参数
+        // 只返回 WHERE 子句的绑定参数
+        return $this->bindings;
     }
 
     // ============================================
@@ -796,4 +778,3 @@ class QueryBuilder
         return $this->modelClass;
     }
 }
-

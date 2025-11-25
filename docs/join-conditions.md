@@ -91,4 +91,59 @@ Post::query()
 - 新增 `JoinClause` 类来管理复杂的 JOIN 条件
 - `JoinCompiler` 支持编译 `JoinClause` 对象
 - 自动收集和合并 JOIN 子句中的绑定参数
+- 自动规范化列名（添加表前缀）
 - 完全向后兼容旧的数组格式 JOIN
+
+## 注意事项
+
+- 列名会自动添加表前缀（如果需要）
+- 绑定参数会自动收集并按正确顺序传递给数据库
+- 支持表别名（AS）语法
+- 第一个条件不会有 AND/OR 前缀，后续条件会自动添加
+
+## 参数绑定说明
+
+查询使用预处理语句（Prepared Statements）来防止 SQL 注入：
+
+```php
+// 你写的代码
+$posts = Post::query()
+    ->leftJoin('postmeta AS pm', function($join) {
+        $join->on('posts.ID', '=', 'pm.post_id')
+             ->where('pm.meta_key', '=', 'status');
+    })
+    ->get();
+
+// 生成的 SQL（带占位符）
+// LEFT JOIN wp_postmeta AS pm ON wp_posts.ID = pm.post_id AND pm.meta_key = ?
+
+// 绑定参数
+// ['status']
+
+// 数据库实际执行的 SQL
+// LEFT JOIN wp_postmeta AS pm ON wp_posts.ID = pm.post_id AND pm.meta_key = 'status'
+```
+
+这种方式的优点：
+1. **安全**：防止 SQL 注入攻击
+2. **高效**：数据库可以缓存查询计划
+3. **自动**：框架自动处理参数转义和绑定
+
+## 调试方法
+
+```php
+$query = Post::query()
+    ->leftJoin('postmeta AS pm', function($join) {
+        $join->on('posts.ID', '=', 'pm.post_id')
+             ->where('pm.meta_key', '=', 'status');
+    });
+
+// 查看 SQL（带占位符）
+echo $query->toSql();
+
+// 查看绑定参数
+print_r($query->getBindings());
+
+// 查看最终 SQL（占位符被替换）
+echo $query->toRawSql();
+```
