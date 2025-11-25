@@ -265,10 +265,12 @@ class QueryBuilder
             $this->joins[] = $joinClause;
         } else {
             // 简单 JOIN
+            // 在这里规范化字段名，然后传入 JoinClause 时不使用 normalizer
+            // 避免重复规范化导致 @ 符号失效
             $first = $this->normalizeColumnName($first);
             $second = $this->normalizeColumnName($second);
 
-            $joinClause = new JoinClause($type, $fullTable, [$this, 'normalizeColumnName']);
+            $joinClause = new JoinClause($type, $fullTable, null);  // 不传入 normalizer
             $joinClause->on($first, $operator, $second);
             $this->joins[] = $joinClause;
         }
