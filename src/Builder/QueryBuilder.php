@@ -253,20 +253,25 @@ class QueryBuilder
     /**
      * Join
      */
-    public function join(string $table, string $first, string $operator, string $second, string $type = 'inner'): self
+    public function join(string $table, $first, string $operator = null, string $second = null, string $type = 'inner'): self
     {
-        // 规范化表名和字段名（自动添加表前缀）
+        // 规范化表名
         $fullTable = $this->normalizeTableName($table);
-        $first = $this->normalizeColumnName($first);
-        $second = $this->normalizeColumnName($second);
 
-        $this->joins[] = [
-            'type' => $type,
-            'table' => $fullTable,
-            'first' => $first,
-            'operator' => $operator,
-            'second' => $second
-        ];
+        // 支持闭包形式的复杂 JOIN 条件
+        if ($first instanceof \Closure) {
+            $joinClause = new JoinClause($type, $fullTable);
+            $first($joinClause);
+            $this->joins[] = $joinClause;
+        } else {
+            // 简单 JOIN
+            $first = $this->normalizeColumnName($first);
+            $second = $this->normalizeColumnName($second);
+
+            $joinClause = new JoinClause($type, $fullTable);
+            $joinClause->on($first, $operator, $second);
+            $this->joins[] = $joinClause;
+        }
 
         return $this;
     }
@@ -274,9 +279,17 @@ class QueryBuilder
     /**
      * Left Join
      */
-    public function leftJoin(string $table, string $first, string $operator, string $second): self
+    public function leftJoin(string $table, $first, string $operator = null, string $second = null): self
     {
         return $this->join($table, $first, $operator, $second, 'left');
+    }
+
+    /**
+     * Right Join
+     */
+    public function rightJoin(string $table, $first, string $operator = null, string $second = null): self
+    {
+        return $this->join($table, $first, $operator, $second, 'right');
     }
 
     /**
@@ -701,7 +714,27 @@ class QueryBuilder
      */
     public function getBindings(): array
     {
-        return $this->bindings;
+        // 合并 JOIN 子句的绑定参数
+        $joinBindings = $this->getJoinBindings();
+        
+        // JOIN 绑定应该在 WHERE 绑定之前
+        return array_merge($joinBindings, $this->bindings);
+    }
+
+    /**
+     * 获取 JOIN 子句的绑定参数
+     */
+    protected function getJoinBindings(): array
+    {
+        $bindings = [];
+
+        foreach ($this->joins as $join) {
+            if ($join instanceof JoinClause) {
+                $bindings = array_merge($bindings, $join->getBindings());
+            }
+        }
+
+        return $bindings;
     }
 
     // ============================================
