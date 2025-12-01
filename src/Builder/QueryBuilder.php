@@ -74,7 +74,8 @@ class QueryBuilder
         if ($column instanceof \Closure) {
             $query = new static($this->modelClass);
             $column($query);
-            $this->wheres[] = ['type' => 'nested', 'query' => $query];
+            $this->wheres[] = ['type' => 'nested', 'query' => $query, 'boolean' => 'and'];
+            $this->bindings = array_merge($this->bindings, $query->getBindings());
             return $this;
         }
 
@@ -514,7 +515,10 @@ class QueryBuilder
     public function find($id): ?object
     {
         $primaryKey = $this->modelClass::getPrimaryKey();
-        return $this->where($primaryKey, $id)->first();
+        $table = $this->modelClass::getTable();
+        $field = $table.'.'.$primaryKey;
+
+        return $this->where($field, $id)->first();
     }
 
     /**
