@@ -61,7 +61,7 @@ class QueryBuilder
      */
     public function select(...$columns): self
     {
-        $this->columns = is_array($columns[0]) ? $columns[0] : $columns;
+        $this->columns = isset($columns[0]) && is_array($columns[0]) ? $columns[0] : $columns;
         return $this;
     }
 
