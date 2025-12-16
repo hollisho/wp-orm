@@ -6,6 +6,7 @@ use ArrayAccess;
 use Countable;
 use IteratorAggregate;
 use ArrayIterator;
+use ReturnTypeWillChange;
 
 /**
  * 集合类
@@ -244,6 +245,7 @@ class Collection implements ArrayAccess, Countable, IteratorAggregate
     /**
      * ArrayAccess: offsetGet
      */
+    #[ReturnTypeWillChange]
     public function offsetGet($offset)
     {
         return $this->items[$offset] ?? null;
