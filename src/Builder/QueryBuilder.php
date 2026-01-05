@@ -716,6 +716,114 @@ class QueryBuilder
 
 
     /**
+     * 更新数据
+     *
+     * @param array $values 要更新的字段和值
+     * @return int 受影响的行数
+     */
+    public function update(array $values): int
+    {
+        $sets = [];
+        $bindings = [];
+
+        foreach ($values as $column => $value) {
+            if ($value instanceof RawExpression) {
+                $sets[] = "{$column} = {$value->getValue()}";
+            } else {
+                $sets[] = "{$column} = ?";
+                $bindings[] = $value;
+            }
+        }
+
+        $sql = "UPDATE {$this->getFullTableName()} SET " . implode(', ', $sets);
+
+        // 添加 WHERE 条件
+        if (!empty($this->wheres)) {
+            $sql .= ' ' . $this->grammar->compileWheres($this->wheres);
+            $bindings = array_merge($bindings, $this->bindings);
+        }
+
+        return $this->connection->update($sql, $bindings);
+    }
+
+    /**
+     * 创建原始 SQL 表达式
+     *
+     * @param string $value 原始 SQL
+     * @return RawExpression
+     */
+    public function raw(string $value): RawExpression
+    {
+        return new RawExpression($value);
+    }
+
+    /**
+     * 自增字段值
+     *
+     * @param string $column 字段名
+     * @param float|int $amount 增加的数量
+     * @param array $extra 额外要更新的字段
+     * @return int 受影响的行数
+     * @throws \InvalidArgumentException
+     */
+    public function increment(string $column, $amount = 1, array $extra = []): int
+    {
+        if (!is_numeric($amount)) {
+            throw new \InvalidArgumentException('Non-numeric value passed to increment method.');
+        }
+
+        $wrapped = $this->wrapColumn($column);
+        $columns = array_merge([$column => $this->raw("$wrapped + $amount")], $extra);
+
+        return $this->update($columns);
+    }
+
+    /**
+     * 自减字段值
+     *
+     * @param string $column 字段名
+     * @param float|int $amount 减少的数量
+     * @param array $extra 额外要更新的字段
+     * @return int 受影响的行数
+     * @throws \InvalidArgumentException
+     */
+    public function decrement(string $column, $amount = 1, array $extra = []): int
+    {
+        if (!is_numeric($amount)) {
+            throw new \InvalidArgumentException('Non-numeric value passed to decrement method.');
+        }
+
+        $wrapped = $this->wrapColumn($column);
+        $columns = array_merge([$column => $this->raw("$wrapped - $amount")], $extra);
+
+        return $this->update($columns);
+    }
+
+    /**
+     * 包装字段名（添加反引号）
+     *
+     * @param string $column 字段名
+     * @return string
+     */
+    protected function wrapColumn(string $column): string
+    {
+        // 如果字段名包含点号，分别包装表名和字段名
+        if (strpos($column, '.') !== false) {
+            $parts = explode('.', $column);
+            return implode('.', array_map(function ($part) {
+                return $part === '*' ? $part : "`{$part}`";
+            }, $parts));
+        }
+
+        // 星号不需要包装
+        if ($column === '*') {
+            return $column;
+        }
+
+        return "`{$column}`";
+    }
+
+    /**
      * 获取绑定参数
      */
     public function getBindings(): array
