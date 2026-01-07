@@ -730,7 +730,7 @@ class QueryBuilder
             if ($value instanceof RawExpression) {
                 $sets[] = "{$column} = {$value->getValue()}";
             } else {
-                $sets[] = "{$column} = ?";
+                $sets[] = "{$column} = %s";
                 $bindings[] = $value;
             }
         }
